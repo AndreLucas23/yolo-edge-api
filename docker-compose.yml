@@ -13,8 +13,10 @@ services:
       - ./models:/app/models:ro    # pesos somente-leitura
       - ./output:/app/output       # resultados gravados aqui
       - ./images:/app/images:ro    # imagens de teste
+      - ./preprocessing:/preprocessing
     environment:
-      - MODEL_NAME=yolov8n.pt
+      - MODEL_NAME=yolo-epi.pt
+      - PYTHONPATH=/:/app
     networks:
       - yolo-net
     restart: unless-stopped
@@ -39,6 +41,35 @@ services:
     depends_on:
       yolo-api:
         condition: service_healthy     # aguarda healthcheck passar
+
+  yolo-stream:
+    build:
+      context: .
+      dockerfile: Dockerfile.api    # reutiliza a mesma base ARM64
+    container_name: yolo-stream
+    ports:
+      - "5000:5000"
+    privileged: true              # mesmo acesso à câmera do yolo-api
+    volumes:
+      - ./stream:/app/stream        # código do módulo de streaming
+      - ./models:/app/models:ro     # pesos do modelo (read-only)
+      - /dev:/dev                   # dispositivos de hardware do host
+      - /run/udev:/run/udev:ro      # permite ao libcamera identificar o sensor via udev
+      - ./preprocessing:/preprocessing
+    environment:
+      - MODEL_NAME=yolo-epi.pt
+      - PYTHONPATH=/:/app
+    command: >
+      python3 stream/mjpeg_server.py
+      --device 0
+      --model models/yolo-epi.pt
+      --infer-every 3
+      --infer-size 320
+      --port 5000
+    restart: unless-stopped
+    depends_on:
+      - yolo-api
+
 
 networks:
   yolo-net:
